@@ -13,18 +13,16 @@ module Hummingbird.YuntanAuthenticator where
 --------------------------------------------------------------------------------
 
 import           Control.Exception
-import qualified Crypto.BCrypt                      as BCrypt
 import           Data.Aeson                         (FromJSON (..), (.:?))
 import           Data.Aeson.Types
 import qualified Data.Attoparsec.ByteString         as AP
-import qualified Data.ByteString                    as BS
 import           Data.Functor.Identity
 import qualified Data.Map                           as M
 import           Data.Maybe
 import qualified Data.Text                          as T
 import qualified Data.Text.Encoding                 as T
 import           Data.Typeable
-import           Data.UUID                          (UUID)
+import           Data.UUID                          (UUID, fromText, toText)
 import           Data.Word
 
 import           Network.MQTT.Broker.Authentication
@@ -33,18 +31,37 @@ import qualified Network.MQTT.Trie                  as R
 
 import qualified Hummingbird.Configuration          as C
 
+import           Haxl.Core                          (GenHaxl, StateStore,
+                                                     initEnv, runHaxl,
+                                                     stateEmpty, stateSet)
+
+import           Yuntan.API.User                    (getBind, initUserState)
+import           Yuntan.Base                        (AppEnv, Gateway (..),
+                                                     gateway, initMgr)
+import           Yuntan.Types.User                  (Bind (..))
+
+import           Control.Lens                       ((^?))
+import qualified Data.Aeson.Lens                    as Lens (key, _String)
+
+data YuntanEnv
+  = YuntanEnv
+  { userService :: Gateway }
+
+instance AppEnv YuntanEnv where
+  gateway env "UserDataSource" = userService env
+  gateway _ n                  = error $ "Unsupport data source" ++ n
+
 data YuntanAuthenticator
    = YuntanAuthenticator
-   { authPrincipals   :: M.Map UUID YuntanPrincipalConfig
+   { authStateStore   :: StateStore
+   , authEnv          :: YuntanEnv
    , authDefaultQuota :: Quota
-   } deriving (Eq, Show)
+   }
 
 data YuntanPrincipalConfig
    = YuntanPrincipalConfig
-   { cfgUsername     :: Maybe T.Text
-   , cfgPasswordHash :: Maybe BS.ByteString
-   , cfgQuota        :: Maybe YuntanQuotaConfig
-   , cfgPermissions  :: M.Map Filter (Identity [C.Privilege])
+   { cfgQuota       :: Maybe YuntanQuotaConfig
+   , cfgPermissions :: M.Map Filter (Identity [C.Privilege])
    } deriving (Eq, Show)
 
 data YuntanQuotaConfig
@@ -60,38 +77,30 @@ data YuntanQuotaConfig
 instance Authenticator YuntanAuthenticator where
   data AuthenticatorConfig YuntanAuthenticator
      = YuntanAuthenticatorConfig
-       { cfgPrincipals   :: M.Map UUID YuntanPrincipalConfig
+       { cfgService      :: Gateway
        , cfgDefaultQuota :: Quota
        }
   data AuthenticationException YuntanAuthenticator
      = YuntanAuthenticationException deriving (Eq, Ord, Show, Typeable)
 
-  newAuthenticator config = YuntanAuthenticator
-    <$> pure (cfgPrincipals config)
-    <*> pure (cfgDefaultQuota config)
+  newAuthenticator config = do
+    userC <- initMgr $ cfgService config
+    let state = stateSet (initUserState . getGWNumThreads $ cfgService config)
+              stateEmpty
+
+    return $ YuntanAuthenticator state (YuntanEnv userC) (cfgDefaultQuota config)
 
   authenticate auth req =
-    pure $ case requestCredentials req of
-      Just (reqUser, Just reqPass) ->
-        case mapMaybe (byUsernameAndPassword reqUser reqPass) $ M.assocs (authPrincipals auth) of
-          [(uuid, _)] -> Just uuid
-          _           -> Nothing
-      _ -> Nothing
-    where
-      byUsernameAndPassword (Username reqUser) (Password reqPass) p@(_, principal) = do
-        -- Maybe monad - yields Nothing on failure!
-        user <- cfgUsername principal
-        pwhash <- cfgPasswordHash principal
-        -- The user is authenticated if username _and_ supplied password match.
-        if user == reqUser && BCrypt.validatePassword pwhash reqPass
-          then Just p
-          else Nothing
+    case requestCredentials req of
+      Nothing                     -> return Nothing
+      Just (Username reqToken, _) -> getUUID auth reqToken
 
-  getPrincipal auth pid =
-    case M.lookup pid (authPrincipals auth) of
+  getPrincipal auth pid = do
+    config <- getPrincipalConfig auth $ toText pid
+    case config of
       Nothing -> pure Nothing
       Just pc -> pure $ Just Principal {
-          principalUsername             = Username <$> cfgUsername pc
+          principalUsername             = Nothing
         , principalQuota                = mergeQuota (cfgQuota pc) (authDefaultQuota auth)
         , principalPublishPermissions   = R.mapMaybe f $ M.foldrWithKey' R.insert R.empty (cfgPermissions pc)
         , principalSubscribePermissions = R.mapMaybe g $ M.foldrWithKey' R.insert R.empty (cfgPermissions pc)
@@ -124,9 +133,7 @@ instance Exception (AuthenticationException YuntanAuthenticator)
 
 instance FromJSON YuntanPrincipalConfig where
   parseJSON (Object v) = YuntanPrincipalConfig
-    <$> v .:? "username"
-    <*> ((T.encodeUtf8 <$>) <$> v .:? "password")
-    <*> v .:? "quota"
+    <$> v .:? "quota"
     <*> v .:? "permissions" .!= mempty
   parseJSON invalid = typeMismatch "YuntanPrincipalConfig" invalid
 
@@ -152,7 +159,7 @@ instance FromJSON Quota where
 
 instance FromJSON (AuthenticatorConfig YuntanAuthenticator) where
   parseJSON (Object v) = YuntanAuthenticatorConfig
-    <$> v .: "principals"
+    <$> v .: "service"
     <*> v .: "defaultQuota"
   parseJSON invalid = typeMismatch "YuntanAuthenticatorConfig" invalid
 
@@ -168,3 +175,28 @@ instance FromJSONKey Filter where
     case AP.parseOnly filterParser (T.encodeUtf8 t) of
       Left e  -> fail e
       Right x -> pure x
+
+runIO :: YuntanAuthenticator -> GenHaxl YuntanEnv a -> IO a
+runIO (YuntanAuthenticator state env _) m = do
+  env0 <- initEnv state env
+  runHaxl env0 m
+
+getUUID :: YuntanAuthenticator -> T.Text -> IO (Maybe UUID)
+getUUID auth token = do
+  u <- runIO auth $ getBind token
+  case u of
+    Left _   -> return Nothing
+    Right Bind {getBindExtra = extra} ->
+      case extra ^? Lens.key "uuid" . Lens._String of
+        Nothing   -> return Nothing
+        Just uuid -> return $ fromText uuid
+
+getPrincipalConfig :: YuntanAuthenticator -> T.Text -> IO (Maybe YuntanPrincipalConfig)
+getPrincipalConfig auth pid = do
+  u <- runIO auth $ getBind pid
+  case u of
+    Left _                            -> return Nothing
+    Right Bind {getBindExtra = extra} ->
+      case fromJSON extra of
+        Success a -> return $ Just a
+        Error _   -> return Nothing
