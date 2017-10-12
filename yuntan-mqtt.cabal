@@ -29,6 +29,8 @@ library
                      , yuntan-base
                      , lens
                      , lens-aeson
+                     , hslogger
+                     , yuntan-common
   default-language:    Haskell2010
 
 executable yuntan-mqtt

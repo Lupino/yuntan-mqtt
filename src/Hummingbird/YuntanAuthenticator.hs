@@ -38,10 +38,12 @@ import           Haxl.Core                          (GenHaxl, StateStore,
 import           Yuntan.API.User                    (getBind, initUserState)
 import           Yuntan.Base                        (AppEnv, Gateway (..),
                                                      gateway, initMgr)
+import           Yuntan.Types.Result                (ErrResult (errMsg))
 import           Yuntan.Types.User                  (Bind (..))
 
 import           Control.Lens                       ((^?))
 import qualified Data.Aeson.Lens                    as Lens (key, _String)
+import qualified System.Log.Logger                  as Log
 
 data YuntanEnv
   = YuntanEnv
@@ -185,7 +187,7 @@ getUUID :: YuntanAuthenticator -> T.Text -> IO (Maybe UUID)
 getUUID auth token = do
   u <- runIO auth $ getBind token
   case u of
-    Left _   -> return Nothing
+    Left e   -> Log.errorM "Hummingbird" (errMsg e) >> return Nothing
     Right Bind {getBindExtra = extra} ->
       case extra ^? Lens.key "uuid" . Lens._String of
         Nothing   -> return Nothing
@@ -195,7 +197,7 @@ getPrincipalConfig :: YuntanAuthenticator -> T.Text -> IO (Maybe YuntanPrincipal
 getPrincipalConfig auth pid = do
   u <- runIO auth $ getBind pid
   case u of
-    Left _                            -> return Nothing
+    Left e                            -> Log.errorM "Hummingbird" (errMsg e) >> return Nothing
     Right Bind {getBindExtra = extra} ->
       case fromJSON extra of
         Success a -> return $ Just a
