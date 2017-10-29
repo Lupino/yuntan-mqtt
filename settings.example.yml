@@ -1,0 +1,38 @@
+auth:
+  defaultQuota:
+    maxIdleSessionTTL:    0
+    maxPacketSize:        65535
+    maxPacketIdentifiers: 10
+    maxQueueSizeQoS0:     100
+    maxQueueSizeQoS1:     100
+    maxQueueSizeQoS2:     100
+  service:
+    gateway: https://gw.huabot.com
+    key: ""
+    secret: ""
+    timeout: 30000
+    numThreads: 10
+
+admin:
+  socketPath: "sock/hummingbird.socket"
+
+transports:
+  - type: socket
+    bindAddress: 0.0.0.0
+    bindPort: 1883
+    listenBacklog: 5
+  - type: websocket
+    transport:
+      type: socket
+      bindAddress: 0.0.0.0
+      bindPort: 1884
+      listenBacklog: 5
+
+# prometheus:
+#   bindAddress: "*"
+#   bindPort: 9001
+
+logging:
+  level: INFO
+  appenders:
+    - type: console
