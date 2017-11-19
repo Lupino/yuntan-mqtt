@@ -45,7 +45,7 @@ import           Control.Lens                       ((^?))
 import qualified Data.Aeson.Lens                    as Lens (key, _String)
 import qualified System.Log.Logger                  as Log
 
-data YuntanEnv
+newtype YuntanEnv
   = YuntanEnv
   { userService :: Gateway }
 
