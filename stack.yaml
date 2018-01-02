@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-9.8
+resolver: lts-10.2
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -37,9 +37,35 @@ resolver: lts-9.8
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - .
+- location:
+    git: https://github.com/Lupino/yuntan-common.git
+    commit: 2ec5bf2176f327da715016ee4d93cc317870b9d5
+  extra-dep: true
+  subdirs:
+  - yuntan-common-result
+  - yuntan-common-signature
+  - yuntan-common-list-result
+  - yuntan-common-json
+  - yuntan-common-wreq
+- location:
+    git: https://github.com/Lupino/yuntan-base.git
+    commit: 5bb223b30fb4eab5018868f21258bc1232eff9f8
+  extra-dep: true
+  subdirs:
+  - yuntan-base
+  - yuntan-base-user
+- location:
+    git: https://github.com/Lupino/haskell-hummingbird.git
+    commit: 59da9785861d9196dd5f606a65f776c765f768db
+  extra-dep: true
+- location:
+    git: https://github.com/lpeterse/haskell-mqtt.git
+    commit: 532af76d7a8148241108bbabb0b6229dcc2aa3ab
+  extra-dep: true
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
-extra-deps: []
+extra-deps:
+- socket-unix-0.2.0.0
 
 # Override default flag values for local packages and extra-deps
 flags: {}
@@ -64,3 +90,4 @@ extra-package-dbs: []
 #
 # Allow a newer minor version of GHC than the snapshot specifies
 # compiler-check: newer-minor
+allow-newer: true
