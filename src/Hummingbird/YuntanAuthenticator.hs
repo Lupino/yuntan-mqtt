@@ -87,7 +87,7 @@ instance Authenticator YuntanAuthenticator where
 
   newAuthenticator config = do
     userC <- initMgr $ cfgService config
-    let state = stateSet (initUserState . getGWNumThreads $ cfgService config)
+    let state = stateSet (initUserState . numThreads $ cfgService config)
               stateEmpty
 
     return $ YuntanAuthenticator state (YuntanEnv userC) (cfgDefaultQuota config)
