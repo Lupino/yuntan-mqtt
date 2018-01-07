@@ -37,7 +37,7 @@ import           Haxl.Core                          (GenHaxl, StateStore,
 
 import           Yuntan.API.User                    (getBind, initUserState)
 import           Yuntan.Base                        (AppEnv, Gateway (..),
-                                                     gateway, initMgr)
+                                                     gateway, initGateway)
 import           Yuntan.Types.Result                (ErrResult (errMsg))
 import           Yuntan.Types.User                  (Bind (..))
 
@@ -86,7 +86,7 @@ instance Authenticator YuntanAuthenticator where
      = YuntanAuthenticationException deriving (Eq, Ord, Show, Typeable)
 
   newAuthenticator config = do
-    userC <- initMgr $ cfgService config
+    userC <- initGateway $ cfgService config
     let state = stateSet (initUserState . numThreads $ cfgService config)
               stateEmpty
 

@@ -49,7 +49,7 @@ packages:
   - yuntan-common-wreq
 - location:
     git: https://github.com/Lupino/yuntan-base.git
-    commit: af9b039ded2f89f1fe9ab106aaf58beff8110a2e
+    commit: a2359bdb1a2e8cb3c58a685b312f114a6a9be2ca
   extra-dep: true
   subdirs:
   - yuntan-base
