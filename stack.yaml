@@ -39,7 +39,7 @@ packages:
 - .
 - location:
     git: https://github.com/Lupino/yuntan-common.git
-    commit: 2ec5bf2176f327da715016ee4d93cc317870b9d5
+    commit: 7904e1965f13786e902a639ee50ef925a23a65e5
   extra-dep: true
   subdirs:
   - yuntan-common-result
@@ -49,7 +49,7 @@ packages:
   - yuntan-common-wreq
 - location:
     git: https://github.com/Lupino/yuntan-base.git
-    commit: 182d098880794199f779e10ad0c37cc7a33321e1
+    commit: af9b039ded2f89f1fe9ab106aaf58beff8110a2e
   extra-dep: true
   subdirs:
   - yuntan-base

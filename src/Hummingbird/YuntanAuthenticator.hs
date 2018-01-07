@@ -12,7 +12,7 @@ module Hummingbird.YuntanAuthenticator where
 -- Stability   :  experimental
 --------------------------------------------------------------------------------
 
-import           Control.Exception
+import           Control.Exception                  (Exception)
 import           Data.Aeson                         (FromJSON (..), (.:?))
 import           Data.Aeson.Types
 import qualified Data.Attoparsec.ByteString         as AP
@@ -33,7 +33,7 @@ import qualified Hummingbird.Configuration          as C
 
 import           Haxl.Core                          (GenHaxl, StateStore,
                                                      initEnv, runHaxl,
-                                                     stateEmpty, stateSet)
+                                                     stateEmpty, stateSet, try)
 
 import           Yuntan.API.User                    (getBind, initUserState)
 import           Yuntan.Base                        (AppEnv, Gateway (..),
@@ -185,7 +185,7 @@ runIO (YuntanAuthenticator state env _) m = do
 
 getUUID :: YuntanAuthenticator -> T.Text -> IO (Maybe UUID)
 getUUID auth token = do
-  u <- runIO auth $ getBind token
+  u <- runIO auth $ try $ getBind token
   case u of
     Left e   -> Log.errorM "Hummingbird" (errMsg e) >> return Nothing
     Right Bind {getBindExtra = extra} ->
@@ -195,7 +195,7 @@ getUUID auth token = do
 
 getPrincipalConfig :: YuntanAuthenticator -> T.Text -> IO (Maybe YuntanPrincipalConfig)
 getPrincipalConfig auth pid = do
-  u <- runIO auth $ getBind pid
+  u <- runIO auth $ try $ getBind pid
   case u of
     Left e                            -> Log.errorM "Hummingbird" (errMsg e) >> return Nothing
     Right Bind {getBindExtra = extra} ->
