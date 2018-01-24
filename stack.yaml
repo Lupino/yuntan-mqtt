@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-10.2
+resolver: lts-10.3
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -39,7 +39,7 @@ packages:
 - .
 - location:
     git: https://github.com/Lupino/yuntan-common.git
-    commit: 7904e1965f13786e902a639ee50ef925a23a65e5
+    commit: 35dc17e4c419c54b9f067352facf9778cf45895f
   extra-dep: true
   subdirs:
   - yuntan-common-result
@@ -49,18 +49,22 @@ packages:
   - yuntan-common-wreq
 - location:
     git: https://github.com/Lupino/yuntan-base.git
-    commit: a2359bdb1a2e8cb3c58a685b312f114a6a9be2ca
+    commit: bf3433696d62004d4c3e2201a56fae1aade44814
   extra-dep: true
   subdirs:
   - yuntan-base
   - yuntan-base-user
 - location:
-    git: https://github.com/Lupino/haskell-hummingbird.git
-    commit: 59da9785861d9196dd5f606a65f776c765f768db
+    git: https://github.com/lpeterse/haskell-hummingbird.git
+    commit: 957b6dac9d6deae8ca739c9448c4566e5e7852b7
   extra-dep: true
 - location:
     git: https://github.com/lpeterse/haskell-mqtt.git
-    commit: 532af76d7a8148241108bbabb0b6229dcc2aa3ab
+    commit: 23ab7f34b73c36af399bae89ee509d56acaa3c71
+  extra-dep: true
+- location:
+    git: https://github.com/facebook/Haxl.git
+    commit: 6b75496a29fd46f7fcc3fd1586fa2b6c0b7e36b5
   extra-dep: true
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)

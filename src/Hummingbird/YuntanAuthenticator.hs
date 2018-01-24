@@ -68,12 +68,13 @@ data YuntanPrincipalConfig
 
 data YuntanQuotaConfig
    = YuntanQuotaConfig
-   { cfgQuotaMaxIdleSessionTTL    :: Maybe Word64
-   , cfgQuotaMaxPacketSize        :: Maybe Word64
-   , cfgQuotaMaxPacketIdentifiers :: Maybe Word64
-   , cfgQuotaMaxQueueSizeQoS0     :: Maybe Word64
-   , cfgQuotaMaxQueueSizeQoS1     :: Maybe Word64
-   , cfgQuotaMaxQueueSizeQoS2     :: Maybe Word64
+   { cfgQuotaMaxSessions          :: Maybe Int
+   , cfgQuotaMaxIdleSessionTTL    :: Maybe Int
+   , cfgQuotaMaxPacketSize        :: Maybe Int
+   , cfgQuotaMaxPacketIdentifiers :: Maybe Int
+   , cfgQuotaMaxQueueSizeQoS0     :: Maybe Int
+   , cfgQuotaMaxQueueSizeQoS1     :: Maybe Int
+   , cfgQuotaMaxQueueSizeQoS2     :: Maybe Int
    } deriving (Eq, Ord, Show)
 
 instance Authenticator YuntanAuthenticator where
@@ -121,7 +122,8 @@ instance Authenticator YuntanAuthenticator where
       -- Prefers a user quota property over the default quota property.
       mergeQuota Nothing defaultQuota = defaultQuota
       mergeQuota (Just quota) defaultQuota = Quota {
-          quotaMaxIdleSessionTTL    = fromMaybe (quotaMaxIdleSessionTTL    defaultQuota) (cfgQuotaMaxIdleSessionTTL    quota)
+          quotaMaxSessions          = fromMaybe (quotaMaxSessions          defaultQuota) (cfgQuotaMaxSessions          quota)
+        , quotaMaxIdleSessionTTL    = fromMaybe (quotaMaxIdleSessionTTL    defaultQuota) (cfgQuotaMaxIdleSessionTTL    quota)
         , quotaMaxPacketSize        = fromMaybe (quotaMaxPacketSize        defaultQuota) (cfgQuotaMaxPacketSize        quota)
         , quotaMaxPacketIdentifiers = fromMaybe (quotaMaxPacketIdentifiers defaultQuota) (cfgQuotaMaxPacketIdentifiers quota)
         , quotaMaxQueueSizeQoS0     = fromMaybe (quotaMaxQueueSizeQoS0     defaultQuota) (cfgQuotaMaxQueueSizeQoS0     quota)
@@ -141,7 +143,8 @@ instance FromJSON YuntanPrincipalConfig where
 
 instance FromJSON YuntanQuotaConfig where
   parseJSON (Object v) = YuntanQuotaConfig
-    <$> v .:? "maxIdleSessionTTL"
+    <$> v .:? "maxSessions"
+    <*> v .:? "maxIdleSessionTTL"
     <*> v .:? "maxPacketSize"
     <*> v .:? "maxPacketIdentifiers"
     <*> v .:? "maxQueueSizeQoS0"
@@ -151,7 +154,8 @@ instance FromJSON YuntanQuotaConfig where
 
 instance FromJSON Quota where
   parseJSON (Object v) = Quota
-    <$> v .: "maxIdleSessionTTL"
+    <$> v .: "maxSessions"
+    <*> v .: "maxIdleSessionTTL"
     <*> v .: "maxPacketSize"
     <*> v .: "maxPacketIdentifiers"
     <*> v .: "maxQueueSizeQoS0"
