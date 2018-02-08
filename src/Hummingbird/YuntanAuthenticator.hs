@@ -82,7 +82,7 @@ instance Authenticator YuntanAuthenticator where
      = YuntanAuthenticatorConfig
        { cfgService      :: Gateway
        , cfgDefaultQuota :: Quota
-       }
+       } deriving (Show)
   data AuthenticationException YuntanAuthenticator
      = YuntanAuthenticationException deriving (Eq, Ord, Show, Typeable)
 
