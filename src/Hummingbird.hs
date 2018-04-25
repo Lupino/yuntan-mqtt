@@ -14,12 +14,8 @@ module Hummingbird ( Hummingbird.Hummingbird (), Hummingbird.VendorSettings (..)
 -- Stability   :  experimental
 --------------------------------------------------------------------------------
 
-import qualified Crypto.BCrypt                      as BCrypt
 import           Data.Aeson                         hiding (Options)
-import qualified Data.ByteString.Char8              as BS
 import           Options
-import           System.Exit
-import           System.IO
 
 import           Network.MQTT.Broker.Authentication (Authenticator,
                                                      AuthenticatorConfig)
@@ -56,7 +52,6 @@ runWithVendorSettings :: forall auth. (Authenticator auth, FromJSON (Authenticat
 runWithVendorSettings vendorSettings = runSubcommand
   [ subcommand "cli"     Cli.run
   , subcommand "broker"  runBroker
-  , subcommand "pwhash"  runPwhash
   , subcommand "version" runVersion
   ]
   where
@@ -71,17 +66,6 @@ runWithVendorSettings vendorSettings = runSubcommand
           HI.versionName = vendorVersionName vendorSettings
         , HI.configFilePath = configFilePath opts
         }
-
-    runPwhash :: MainOptions -> VersionOptions -> [String] -> IO ()
-    runPwhash _ _ _ = do
-      hSetEcho stdin False
-      password <- BS.getLine
-      mhash <- BCrypt.hashPasswordUsingPolicy
-        (BCrypt.fastBcryptHashingPolicy { BCrypt.preferredHashCost = 8 })
-        password
-      case mhash of
-        Nothing   -> exitFailure
-        Just hash -> BS.putStrLn hash
 
     runVersion :: MainOptions -> VersionOptions -> [String] -> IO ()
     runVersion _ _ _ =
