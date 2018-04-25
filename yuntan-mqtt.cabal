@@ -28,7 +28,6 @@ library
                      , Hummingbird.SysInfo
                      , Hummingbird.Terminator
                      , Hummingbird.Transport
-                     , Hummingbird.Pkcs8
   build-depends:       base >= 4.7 && < 5
                      , mqtt
                      , aeson
@@ -46,19 +45,14 @@ library
                      , socket-unix
                      , options
                      , haskeline
-                     , base64-bytestring
-                     , pem
-                     , asn1-types
-                     , asn1-parse
-                     , asn1-encoding
-                     , x509
-                     , x509-store
                      , async
                      , tls
                      , networking
                      , data-default
                      , data-default-class
                      , websockets
+                     , x509
+                     , x509-store
                      , yaml
                      , unordered-containers
                      , unix
