@@ -23,7 +23,6 @@ import qualified Data.Text                          as T
 import qualified Data.Text.Encoding                 as T
 import           Data.Typeable
 import           Data.UUID                          (UUID, fromText, toText)
-import           Data.Word
 
 import           Network.MQTT.Broker.Authentication
 import           Network.MQTT.Message
