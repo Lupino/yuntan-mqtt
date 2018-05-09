@@ -16,16 +16,10 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Hummingbird
-                     , Hummingbird.Administration.Cli
-                     , Hummingbird.Administration.Escape
-                     , Hummingbird.Administration.Request
-                     , Hummingbird.Administration.Response
-                     , Hummingbird.Administration.Server
                      , Hummingbird.YuntanAuthenticator
                      , Hummingbird.Configuration
                      , Hummingbird.Internal
                      , Hummingbird.Logging
-                     , Hummingbird.SysInfo
                      , Hummingbird.Terminator
                      , Hummingbird.Transport
   build-depends:       base >= 4.7 && < 5
@@ -36,15 +30,8 @@ library
                      , text
                      , uuid
 
-                     , bytestring
-                     , binary
-                     , parsec
-                     , clock
-                     , transformers
                      , socket
-                     , socket-unix
                      , options
-                     , haskeline
                      , async
                      , tls
                      , networking
@@ -55,8 +42,6 @@ library
                      , x509-store
                      , yaml
                      , unordered-containers
-                     , unix
-                     , filepath
 
                      , haxl
                      , yuntan-base

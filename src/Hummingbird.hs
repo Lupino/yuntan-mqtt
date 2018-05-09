@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleInstances   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies        #-}
-module Hummingbird ( Hummingbird.Hummingbird (), Hummingbird.VendorSettings (..), runWithVendorSettings ) where
+module Hummingbird (VendorSettings (..), runWithVendorSettings) where
 --------------------------------------------------------------------------------
 -- |
 -- Module      :  Hummingbird
@@ -14,20 +14,12 @@ module Hummingbird ( Hummingbird.Hummingbird (), Hummingbird.VendorSettings (..)
 -- Stability   :  experimental
 --------------------------------------------------------------------------------
 
-import           Data.Aeson                         hiding (Options)
 import           Options
-
-import           Network.MQTT.Broker.Authentication (Authenticator,
-                                                     AuthenticatorConfig)
-
-import qualified Hummingbird.Administration.Cli     as Cli
-import qualified Hummingbird.Administration.Server  as Administration
-import qualified Hummingbird.Internal               as Hummingbird
 import qualified Hummingbird.Internal               as HI
 
 {-# ANN module "HLint: ignore Use newtype instead of data" #-}
 
-data VendorSettings auth = VendorSettings
+data VendorSettings = VendorSettings
   { vendorVersionName :: String
   } deriving (Eq, Ord, Show)
 
@@ -48,19 +40,15 @@ instance Options BrokerOptions where
 instance Options VersionOptions where
   defineOptions = pure VersionOptions
 
-runWithVendorSettings :: forall auth. (Authenticator auth, FromJSON (AuthenticatorConfig auth), Show (AuthenticatorConfig auth)) => VendorSettings auth -> IO ()
+runWithVendorSettings :: VendorSettings -> IO ()
 runWithVendorSettings vendorSettings = runSubcommand
-  [ subcommand "cli"     Cli.run
-  , subcommand "broker"  runBroker
+  [ subcommand "broker"  runBroker
   , subcommand "version" runVersion
   ]
   where
 
     runBroker :: MainOptions -> BrokerOptions -> [String] -> IO ()
-    runBroker _ opts _ = do
-      hum <- HI.new settings :: IO (Hummingbird.Hummingbird auth)
-      HI.start hum
-      Administration.run hum
+    runBroker _ opts _ = HI.start settings
       where
         settings = HI.Settings {
           HI.versionName = vendorVersionName vendorSettings

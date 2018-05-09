@@ -13,9 +13,6 @@ auth:
     timeout: 30000
     numThreads: 10
 
-admin:
-  socketPath: "sock/hummingbird.socket"
-
 transports:
   - type: socket
     bindAddress: 0.0.0.0
@@ -27,10 +24,6 @@ transports:
       bindAddress: 0.0.0.0
       bindPort: 1884
       listenBacklog: 5
-
-# prometheus:
-#   bindAddress: "*"
-#   bindPort: 9001
 
 logging:
   level: INFO
