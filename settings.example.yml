@@ -1,5 +1,6 @@
 auth:
   defaultQuota:
+    maxSessions:          10000
     maxIdleSessionTTL:    0
     maxPacketSize:        65535
     maxPacketIdentifiers: 10
@@ -7,9 +8,9 @@ auth:
     maxQueueSizeQoS1:     100
     maxQueueSizeQoS2:     100
   service:
-    gateway: https://gw.huabot.com
-    key: ""
-    secret: ""
+    gateway: GATEWAY
+    key: KEY
+    secret: SECRET
     timeout: 30000
     numThreads: 10
 
