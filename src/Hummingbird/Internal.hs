@@ -1,5 +1,4 @@
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE LambdaCase       #-}
 module Hummingbird.Internal
   ( Settings (..)
   , start
@@ -52,23 +51,23 @@ start settings = do
   Terminator.run broker
   where
     brokerCallbacks = def {
-        Broker.onConnectionAccepted = \req session-> do
+        Broker.onConnectionAccepted = \req session->
           Log.infoM "hummingbird" $
             "Connection from " ++ show (Authentication.requestRemoteAddress req) ++
             " associated with " ++ show (Session.principalIdentifier session) ++
             " and " ++ show (Session.identifier session) ++  "."
 
-      , Broker.onConnectionRejected = \req reason-> do
+      , Broker.onConnectionRejected = \req reason->
           Log.warningM "hummingbird" $
             "Connection from " ++ show (Authentication.requestRemoteAddress req) ++
             " rejected: " ++ show reason ++ "."
 
-      , Broker.onConnectionClosed = \session-> do
+      , Broker.onConnectionClosed = \session->
           Log.infoM "hummingbird" $
             "Connection associated with " ++ show (Session.identifier session) ++
             " closed by client."
 
-      , Broker.onConnectionFailed = \session e-> do
+      , Broker.onConnectionFailed = \session e->
           Log.warningM "hummingbird" $
             "Connection associated with " ++ show (Session.identifier session) ++
             " failed with exception: " ++ show e ++ "."

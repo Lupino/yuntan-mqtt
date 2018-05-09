@@ -106,7 +106,7 @@ runTransport broker transportConfig = case transportConfig of
     createSecureSocketConfig _ = error "not a tls config"
 
     createWebSocketConfig :: Config -> (SS.ServerConfig a, SS.ServerHooks a) -> IO (SS.ServerConfig (SS.WebSocket a), SS.ServerHooks (SS.WebSocket a))
-    createWebSocketConfig (WebSocketTransport { wsFramePayloadSizeLimit = fpsl, wsMessageDataSizeLimit = mdsl }) (cfg, hooks) = do
+    createWebSocketConfig WebSocketTransport { wsFramePayloadSizeLimit = fpsl, wsMessageDataSizeLimit = mdsl } (cfg, hooks) = do
       let cfg' = SS.WebSocketServerConfig {
           SS.wsTransportConfig   = cfg
         , SS.wsConnectionOptions = WS.defaultConnectionOptions {
