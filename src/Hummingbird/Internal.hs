@@ -15,7 +15,7 @@ module Hummingbird.Internal
 --------------------------------------------------------------------------------
 
 import           Control.Concurrent.Async
-import           Control.Monad (void)
+import           Control.Monad                      (void)
 import           Data.Default.Class
 import qualified System.Log.Logger                  as Log
 
