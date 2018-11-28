@@ -57,11 +57,14 @@ data YuntanAuthenticator
    { authStateStore   :: StateStore
    , authEnv          :: YuntanEnv
    , authDefaultQuota :: Quota
+   , adminPrincipal   :: YuntanPrincipalConfig
    }
 
 data YuntanPrincipalConfig
    = YuntanPrincipalConfig
    { cfgQuota       :: Maybe YuntanQuotaConfig
+   , cfgUsername    :: Maybe T.Text
+   , cfgUUID        :: Maybe UUID
    , cfgPermissions :: M.Map Filter (Identity [C.Privilege])
    } deriving (Eq, Show)
 
@@ -79,8 +82,9 @@ data YuntanQuotaConfig
 instance Authenticator YuntanAuthenticator where
   data AuthenticatorConfig YuntanAuthenticator
      = YuntanAuthenticatorConfig
-       { cfgService      :: Gateway
-       , cfgDefaultQuota :: Quota
+       { cfgService        :: Gateway
+       , cfgDefaultQuota   :: Quota
+       , cfgAdminPrincipal :: YuntanPrincipalConfig
        } deriving (Show)
   data AuthenticationException YuntanAuthenticator
      = YuntanAuthenticationException deriving (Eq, Ord, Show, Typeable)
@@ -90,7 +94,7 @@ instance Authenticator YuntanAuthenticator where
     let state = stateSet (initUserState . numThreads $ cfgService config)
               stateEmpty
 
-    return $ YuntanAuthenticator state (YuntanEnv userC) (cfgDefaultQuota config)
+    return $ YuntanAuthenticator state (YuntanEnv userC) (cfgDefaultQuota config) (cfgAdminPrincipal config)
 
   authenticate auth req =
     case requestCredentials req of
@@ -102,7 +106,7 @@ instance Authenticator YuntanAuthenticator where
     case config of
       Nothing -> pure Nothing
       Just pc -> pure $ Just Principal {
-          principalUsername             = Nothing
+          principalUsername             = Username <$> cfgUsername pc
         , principalQuota                = mergeQuota (cfgQuota pc) (authDefaultQuota auth)
         , principalPublishPermissions   = R.mapMaybe f $ M.foldrWithKey' R.insert R.empty (cfgPermissions pc)
         , principalSubscribePermissions = R.mapMaybe g $ M.foldrWithKey' R.insert R.empty (cfgPermissions pc)
@@ -137,6 +141,8 @@ instance Exception (AuthenticationException YuntanAuthenticator)
 instance FromJSON YuntanPrincipalConfig where
   parseJSON (Object v) = YuntanPrincipalConfig
     <$> v .:? "quota"
+    <*> v .:? "username"
+    <*> v .:? "uuid"
     <*> v .:? "permissions" .!= mempty
   parseJSON invalid = typeMismatch "YuntanPrincipalConfig" invalid
 
@@ -166,6 +172,7 @@ instance FromJSON (AuthenticatorConfig YuntanAuthenticator) where
   parseJSON (Object v) = YuntanAuthenticatorConfig
     <$> v .: "service"
     <*> v .: "defaultQuota"
+    <*> v .: "admin_principal"
   parseJSON invalid = typeMismatch "YuntanAuthenticatorConfig" invalid
 
 instance FromJSON Filter where
@@ -182,26 +189,34 @@ instance FromJSONKey Filter where
       Right x -> pure x
 
 runIO :: YuntanAuthenticator -> GenHaxl YuntanEnv a -> IO a
-runIO (YuntanAuthenticator state env _) m = do
+runIO (YuntanAuthenticator state env _ _) m = do
   env0 <- initEnv state env
   runHaxl env0 m
 
 getUUID :: YuntanAuthenticator -> T.Text -> IO (Maybe UUID)
 getUUID auth token = do
-  u <- runIO auth $ try $ getBind token
-  case u of
-    Left e   -> Log.errorM "Hummingbird" (errMsg e) >> return Nothing
-    Right Bind {getBindExtra = extra} ->
-      case extra ^? Lens.key "uuid" . Lens._String of
-        Nothing   -> return Nothing
-        Just uuid -> return $ fromText uuid
+  if cfgUsername principal == Just token then pure $ cfgUUID principal
+  else do
+    u <- runIO auth $ try $ getBind token
+    case u of
+      Left e   -> Log.errorM "Hummingbird" (errMsg e) >> return Nothing
+      Right Bind {getBindExtra = extra} ->
+        case extra ^? Lens.key "uuid" . Lens._String of
+          Nothing   -> return Nothing
+          Just uuid -> return $ fromText uuid
+
+  where principal = adminPrincipal auth
 
 getPrincipalConfig :: YuntanAuthenticator -> T.Text -> IO (Maybe YuntanPrincipalConfig)
 getPrincipalConfig auth pid = do
-  u <- runIO auth $ try $ getBind pid
-  case u of
-    Left e                            -> Log.errorM "Hummingbird" (errMsg e) >> return Nothing
-    Right Bind {getBindExtra = extra} ->
-      case fromJSON extra of
-        Success a -> return $ Just a
-        Error _   -> return Nothing
+  if cfgUUID principal == fromText pid then pure $ Just principal
+  else do
+    u <- runIO auth $ try $ getBind pid
+    case u of
+      Left e                            -> Log.errorM "Hummingbird" (errMsg e) >> return Nothing
+      Right Bind {getBindExtra = extra} ->
+        case fromJSON extra of
+          Success a -> return $ Just a
+          Error _   -> return Nothing
+
+  where principal = adminPrincipal auth
