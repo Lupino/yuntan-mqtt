@@ -1,4 +1,5 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Hummingbird.Internal
   ( Settings (..)
   , start
@@ -20,8 +21,14 @@ import qualified System.Log.Logger                  as Log
 
 import qualified Network.MQTT.Broker                as Broker
 import qualified Network.MQTT.Broker.Authentication as Authentication
+import           Network.MQTT.Broker.Session        (Session)
 import qualified Network.MQTT.Broker.Session        as Session
+import           Network.MQTT.Message               (ClientPacket (..), Filter,
+                                                     Message (..), QoS,
+                                                     Username (..))
 
+import           Data.String                        (IsString, fromString)
+import qualified Data.Text                          as T
 import           Hummingbird.Configuration
 import qualified Hummingbird.Logging                as Logging
 import qualified Hummingbird.Terminator             as Terminator
@@ -75,4 +82,40 @@ start settings = do
       , Broker.onPublishUpstream   = \_-> pure ()
 
       , Broker.onPublishDownstream = \_-> pure ()
+      , Broker.preprocessPacket = preprocessPacket
       }
+
+preprocessPacket :: Session auth -> ClientPacket -> IO ClientPacket
+preprocessPacket session (ClientPublish pid dup message) = ClientPublish pid dup <$> fixedPacketMessage session message
+preprocessPacket session (ClientSubscribe pid filters) = ClientSubscribe pid <$> fixedPacketSubscribe session filters
+preprocessPacket session (ClientUnsubscribe pid filters) = ClientUnsubscribe pid <$> fixedPacketUnsubscribe session filters
+preprocessPacket _ p = pure p
+
+fixedPacketMessage :: Session auth -> Message -> IO Message
+fixedPacketMessage session message = do
+  principal <- Session.getPrincipal session
+  pure message { msgTopic = fixedTopic (Authentication.principalUsername principal) (msgTopic message) }
+
+fixedTopic :: (IsString a, Show a) => Maybe Username -> a -> a
+fixedTopic Nothing = id
+fixedTopic (Just (Username n)) = fromString . updateString (T.unpack n) . removeQuote . show
+  where removeQuote :: String -> String
+        removeQuote ('"' : xs) = take (length xs - 1) xs
+        removeQuote xs         = xs
+
+        updateString :: String -> String -> String
+        updateString [] s0      = s0
+        updateString s []       = s
+        updateString s ('/':xs) = updateString s xs
+        updateString s xs | last s == '/' = s ++ xs
+                          | otherwise = s ++ ('/':xs)
+
+fixedPacketSubscribe :: Session auth -> [(Filter, QoS)] -> IO [(Filter, QoS)]
+fixedPacketSubscribe session filters = do
+  principal <- Session.getPrincipal session
+  pure $ map (\(f, q) -> (fixedTopic (Authentication.principalUsername principal) f, q)) filters
+
+fixedPacketUnsubscribe :: Session auth -> [Filter] -> IO [Filter]
+fixedPacketUnsubscribe session filters = do
+  principal <- Session.getPrincipal session
+  pure $ map (fixedTopic (Authentication.principalUsername principal)) filters
