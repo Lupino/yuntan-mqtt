@@ -70,6 +70,7 @@ data YuntanPrincipalConfig
    = YuntanPrincipalConfig
    { cfgQuota       :: Maybe YuntanQuotaConfig
    , cfgUsername    :: Maybe T.Text
+   , cfgPassword    :: Maybe T.Text
    , cfgUUID        :: Maybe UUID
    , cfgPermissions :: M.Map Filter (Identity [C.Privilege])
    } deriving (Eq, Show)
@@ -110,8 +111,8 @@ instance Authenticator YuntanAuthenticator where
 
   authenticate auth req =
     case requestCredentials req of
-      Nothing                     -> return Nothing
-      Just (Username reqToken, _) -> getUUID auth reqToken
+      Just (Username key, Just (Password passwd)) -> getUUID auth key $ T.decodeUtf8 passwd
+      _                                           -> return Nothing
 
   getPrincipal auth pid = do
     config <- getPrincipalConfig auth pid
@@ -154,6 +155,7 @@ instance FromJSON YuntanPrincipalConfig where
   parseJSON (Object v) = YuntanPrincipalConfig
     <$> v .:? "quota"
     <*> v .:? "username"
+    <*> v .:? "password"
     <*> v .:? "uuid"
     <*> v .:? "permissions" .!= mempty
   parseJSON invalid = typeMismatch "YuntanPrincipalConfig" invalid
@@ -205,9 +207,11 @@ runIO (YuntanAuthenticator state env _ _ _) m = do
   env0 <- initEnv state env
   runHaxl env0 m
 
-getUUID :: YuntanAuthenticator -> T.Text -> IO (Maybe UUID)
-getUUID auth token = do
-  if cfgUsername principal == Just token then pure $ cfgUUID principal
+getUUID :: YuntanAuthenticator -> T.Text -> T.Text -> IO (Maybe UUID)
+getUUID auth key token = do
+  if cfgUsername principal == Just key then
+    if cfgPassword principal == Just token then pure $ cfgUUID principal
+                                           else pure Nothing
   else do
     u <- runIO auth $ try $ getBind token
     case u of
@@ -219,7 +223,7 @@ getUUID auth token = do
             case fromText uuid of
               Nothing -> return Nothing
               Just u0 -> modifyMVarMasked (authUUIDMap auth) $ \uuidMap -> do
-                pure $ (HM.insert u0 (T.unpack $ T.takeWhile (/=':') token) uuidMap, Just u0)
+                pure $ (HM.insert u0 (T.unpack key) uuidMap, Just u0)
 
   where principal = adminPrincipal auth
 

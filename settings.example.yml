@@ -16,6 +16,7 @@ auth:
 
   admin_principal:
     username: admin_name
+    password: admin_password
     uuid: "e4f7f759-a7f0-4ae7-8140-766269e1c503"
     permissions:
       "#": [ PUB, SUB, RET ]
