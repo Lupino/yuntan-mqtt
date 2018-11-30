@@ -49,9 +49,19 @@ import           Control.Lens                       ((^?))
 import qualified Data.Aeson.Lens                    as Lens (key, _String)
 import qualified System.Log.Logger                  as Log
 
-data YuntanEnv = YuntanEnv
+data Service
+  = Service
+  { srvEndpoint :: Gateway
+  , srvPassword :: Maybe T.Text
+  , srvUUID     :: Maybe UUID
+  } deriving (Show)
+
+data YuntanEnv
+  = YuntanEnv
   { userService :: Gateway
   , stateStore  :: StateStore
+  , envPassword :: Maybe T.Text
+  , envUUID     :: Maybe UUID
   }
 
 instance AppEnv YuntanEnv where
@@ -89,7 +99,7 @@ data YuntanQuotaConfig
 instance Authenticator YuntanAuthenticator where
   data AuthenticatorConfig YuntanAuthenticator
      = YuntanAuthenticatorConfig
-       { cfgServiceList    :: [Gateway]
+       { cfgServiceList    :: [Service]
        , cfgDefaultQuota   :: Quota
        , cfgAdminPrincipal :: YuntanPrincipalConfig
        } deriving (Show)
@@ -98,10 +108,12 @@ instance Authenticator YuntanAuthenticator where
 
   newAuthenticator config = do
     envList <- mapM (\s -> do
-      gw <- initGateway s
+      gw <- initGateway $ srvEndpoint s
       pure YuntanEnv
         { userService = gw
-        , stateStore =stateSet (initUserState $ numThreads s) stateEmpty
+        , stateStore  = stateSet (initUserState $ numThreads $ srvEndpoint s) stateEmpty
+        , envPassword = srvPassword s
+        , envUUID     = srvUUID s
         }) $ cfgServiceList config
 
     uuidM <- newMVar HM.empty
@@ -186,6 +198,13 @@ instance FromJSON Quota where
     <*> v .: "maxQueueSizeQoS2"
   parseJSON invalid = typeMismatch "Quota" invalid
 
+instance FromJSON Service where
+  parseJSON (Object v) = Service
+    <$> v .: "endpoint"
+    <*> v .:? "password"
+    <*> v .:? "uuid"
+  parseJSON invalid = typeMismatch "Service" invalid
+
 instance FromJSON (AuthenticatorConfig YuntanAuthenticator) where
   parseJSON (Object v) = YuntanAuthenticatorConfig
     <$> v .: "services"
@@ -206,38 +225,43 @@ instance FromJSONKey Filter where
       Left e  -> fail e
       Right x -> pure x
 
-runIO :: YuntanAuthenticator -> String -> GenHaxl YuntanEnv a -> IO (Maybe a)
-runIO authenticator key m = do
-  case getService (authEnvList authenticator) of
-    Nothing -> pure Nothing
-    Just env -> do
-      env0 <- initEnv (stateStore env) env
-      ret <- runHaxl env0 $ try m
-      case ret of
-        Left e  -> Log.errorM "Hummingbird" (errMsg e) >> pure Nothing
-        Right v -> pure $ Just v
-  where getService :: [YuntanEnv] -> Maybe YuntanEnv
-        getService [] = Nothing
-        getService (x:xs) | appKey (userService x) == key = Just x
-                          | otherwise                     = getService xs
+runIO :: YuntanEnv -> GenHaxl YuntanEnv a -> IO (Maybe a)
+runIO env m = do
+  env0 <- initEnv (stateStore env) env
+  ret <- runHaxl env0 $ try m
+  case ret of
+    Left e  -> Log.errorM "Hummingbird" (errMsg e) >> pure Nothing
+    Right v -> pure $ Just v
+
+authEnv :: YuntanAuthenticator -> String -> Maybe YuntanEnv
+authEnv auth key = go $ authEnvList auth
+  where go :: [YuntanEnv] -> Maybe YuntanEnv
+        go [] = Nothing
+        go (x:xs) | appKey (userService x) == key = Just x
+                  | otherwise = go xs
 
 getUUID :: YuntanAuthenticator -> T.Text -> T.Text -> IO (Maybe UUID)
 getUUID auth key token = do
   if cfgUsername principal == Just key then
     if cfgPassword principal == Just token then pure $ cfgUUID principal
                                            else pure Nothing
-  else do
-    u <- runIO auth (T.unpack key) $ getBind token
-    case u of
-      Nothing -> return Nothing
-      Just Bind {getBindExtra = extra} ->
-        case extra ^? Lens.key "uuid" . Lens._String of
-          Nothing   -> return Nothing
-          Just uuid ->
-            case fromText uuid of
-              Nothing -> return Nothing
-              Just u0 -> modifyMVarMasked (authUUIDMap auth) $ \uuidMap -> do
-                pure $ (HM.insert u0 (T.unpack key) uuidMap, Just u0)
+  else
+    case authEnv auth (T.unpack key) of
+      Nothing -> pure Nothing
+      Just env -> do
+        if envPassword env == Just token then pure $ envUUID env
+        else do
+          u <- runIO env $ getBind token
+          case u of
+            Nothing -> return Nothing
+            Just Bind {getBindExtra = extra} ->
+              case extra ^? Lens.key "uuid" . Lens._String of
+                Nothing   -> return Nothing
+                Just uuid ->
+                  case fromText uuid of
+                    Nothing -> return Nothing
+                    Just u0 -> modifyMVarMasked (authUUIDMap auth) $ \uuidMap -> do
+                      pure $ (HM.insert u0 (T.unpack key) uuidMap, Just u0)
 
   where principal = adminPrincipal auth
 
@@ -249,17 +273,31 @@ getPrincipalConfig auth pid = do
       case HM.lookup pid uuidMap of
         Nothing -> pure (uuidMap, Nothing)
         Just key -> do
-          u <- runIO auth key $ getBind $ toText pid
-          case u of
-            Nothing -> pure (HM.delete pid uuidMap, Nothing)
-            Just Bind {getBindExtra = extra} ->
-              case fromJSON extra of
-                Error _ -> pure (HM.delete pid uuidMap, Nothing)
-                Success a ->
-                  pure (HM.delete pid uuidMap, Just a
-                    { cfgUsername = Just (fromString $ "/" ++ key ++ "/" ++ toString pid)
-                    , cfgPermissions = normalPerm key
-                    })
+          let newMap = HM.delete pid uuidMap
+          case authEnv auth key of
+            Nothing -> pure (newMap, Nothing)
+            Just env -> do
+              if envUUID env == Just pid then
+                pure (newMap, Just YuntanPrincipalConfig
+                  { cfgQuota = Nothing
+                  , cfgUsername = Just (fromString $ "/" ++ key)
+                  , cfgPassword = envPassword env
+                  , cfgUUID = envUUID env
+                  , cfgPermissions = srvPerm key
+                  })
+              else do
+                u <- runIO env $ getBind $ toText pid
+                case u of
+                  Nothing -> pure (newMap, Nothing)
+                  Just Bind {getBindExtra = extra} ->
+                    case fromJSON extra of
+                      Error _ -> pure (newMap, Nothing)
+                      Success a ->
+                        pure (newMap, Just a
+                          { cfgUsername = Just (fromString $ "/" ++ key ++ "/" ++ toString pid)
+                          , cfgPermissions = normalPerm key
+                          })
 
   where principal = adminPrincipal auth
         normalPerm key = M.fromList [(fromString $ "/" ++ key ++ "/" ++ toString pid ++ "/#", Identity [C.Publish, C.Subscribe, C.Retain])]
+        srvPerm key = M.fromList [(fromString $ "/" ++ key ++ "/#", Identity [C.Publish, C.Subscribe, C.Retain])]

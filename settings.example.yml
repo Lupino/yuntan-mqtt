@@ -8,11 +8,14 @@ auth:
     maxQueueSizeQoS1:     100
     maxQueueSizeQoS2:     100
   services:
-    - gateway: GATEWAY
-      key: KEY
-      secret: SECRET
-      timeout: 30000
-      numThreads: 10
+    - endpoint:
+        gateway: GATEWAY
+        key: KEY
+        secret: SECRET
+        timeout: 30000
+        numThreads: 10
+      password: GATEWAY_ADMIN_PASSWORD
+      uuid: "8bbc5ea0-42d1-425b-87f3-baaabe78b71c"
 
   admin_principal:
     username: admin_name
