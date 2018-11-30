@@ -40,7 +40,7 @@ instance Options MainOptions where
 
 instance Options BrokerOptions where
   defineOptions = BrokerOptions
-    <$> simpleOption "config" "/etc/hummingbird/config.yml" "Path to the .yml config file"
+    <$> simpleOption "config" "config.yml" "Path to the .yml config file"
 
 instance Options VersionOptions where
   defineOptions = pure VersionOptions

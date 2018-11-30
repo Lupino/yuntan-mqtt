@@ -43,7 +43,7 @@ instance Options CliOptions where
   defineOptions = CliOptions
     <$> simpleOption "interactive" True "Start an interactive command line interpreter."
     <*> simpleOption "command" "help" "The command to execute (only when non-interactive)."
-    <*> simpleOption "socket" "/run/hummingbird/S.hummingbird-admin" "The brokers local domain socket for administration."
+    <*> simpleOption "socket" "sock/hummingbird.sock" "The brokers local domain socket for administration."
 
 -- | Execute a command using a local unix domain socket
 --   served by a running hummingbird broker.
