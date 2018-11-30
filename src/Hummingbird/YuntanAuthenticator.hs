@@ -20,14 +20,14 @@ import qualified Data.Attoparsec.ByteString         as AP
 import           Data.Functor.Identity
 import           Data.HashMap.Strict                (HashMap)
 import qualified Data.HashMap.Strict                as HM
+import           Data.List                          (intercalate)
 import qualified Data.Map                           as M
 import           Data.Maybe
-import           Data.String                        (fromString)
+import           Data.String                        (IsString, fromString)
 import qualified Data.Text                          as T
 import qualified Data.Text.Encoding                 as T
 import           Data.Typeable
-import           Data.UUID                          (UUID, fromText, toString,
-                                                     toText)
+import           Data.UUID                          (UUID, fromText, toString)
 
 import           Network.MQTT.Broker.Authentication
 import           Network.MQTT.Message
@@ -53,6 +53,7 @@ data Service
   { srvEndpoint :: Gateway
   , srvPassword :: Maybe T.Text
   , srvUUID     :: Maybe UUID
+  , srvQuota    :: Maybe YuntanQuotaConfig
   } deriving (Show)
 
 data YuntanEnv
@@ -60,6 +61,7 @@ data YuntanEnv
   { userService :: Gateway
   , envPassword :: Maybe T.Text
   , envUUID     :: Maybe UUID
+  , envQuota    :: Maybe YuntanQuotaConfig
   } deriving (Show)
 
 instance AppEnv YuntanEnv where
@@ -111,6 +113,7 @@ instance Authenticator YuntanAuthenticator where
         { userService = gw
         , envPassword = srvPassword s
         , envUUID     = srvUUID s
+        , envQuota    = srvQuota s
         }) $ cfgServiceList config
 
     uuidM <- newMVar HM.empty
@@ -200,6 +203,7 @@ instance FromJSON Service where
     <$> v .: "endpoint"
     <*> v .:? "password"
     <*> v .:? "uuid"
+    <*> v .:? "quota"
   parseJSON invalid = typeMismatch "Service" invalid
 
 instance FromJSON (AuthenticatorConfig YuntanAuthenticator) where
@@ -272,13 +276,14 @@ getUUID auth key token =
 
 getPrincipalConfig :: YuntanAuthenticator -> UUID -> IO (Maybe YuntanPrincipalConfig)
 getPrincipalConfig auth pid =
-  if cfgUUID principal == Just pid then pure $ Just principal { cfgUsername = Nothing }
+  if cfgUUID principal == Just pid then
+    pure $ Just principal { cfgUsername = Nothing }
   else
     case authEnvByUUID auth pid of
       Just env0 ->
         pure $ Just YuntanPrincipalConfig
-          { cfgQuota = Nothing
-          , cfgUsername = Just (fromString $ "/" ++ appKey (userService env0))
+          { cfgQuota = envQuota env0
+          , cfgUsername = Just (mkName [appKey (userService env0)])
           , cfgPassword = envPassword env0
           , cfgUUID = envUUID env0
           , cfgPermissions = srvPerm $ appKey (userService env0)
@@ -291,19 +296,21 @@ getPrincipalConfig auth pid =
               let newMap = HM.delete pid uuidMap
               case authEnv auth key of
                 Nothing -> pure (newMap, Nothing)
-                Just env -> do
-                  u <- runIO env $ getBind $ toText pid
-                  case u of
-                    Nothing -> pure (newMap, Nothing)
-                    Just Bind {getBindExtra = extra} ->
-                      case fromJSON extra of
-                        Error _ -> pure (newMap, Nothing)
-                        Success a ->
-                          pure (newMap, Just a
-                            { cfgUsername = Just (fromString $ "/" ++ key ++ "/" ++ toString pid)
-                            , cfgPermissions = normalPerm key
-                            })
+                Just env ->
+                  pure (newMap, Just YuntanPrincipalConfig
+                    { cfgQuota = envQuota env
+                    , cfgUsername = Just $ mkName [key, toString pid]
+                    , cfgPassword = Nothing
+                    , cfgUUID = Just pid
+                    , cfgPermissions = normalPerm key
+                    })
 
   where principal = adminPrincipal auth
-        normalPerm key = M.fromList [(fromString $ "/" ++ key ++ "/" ++ toString pid ++ "/#", Identity [C.Publish, C.Subscribe, C.Retain])]
-        srvPerm key = M.fromList [(fromString $ "/" ++ key ++ "/#", Identity [C.Publish, C.Subscribe, C.Retain])]
+        perm = Identity [C.Publish, C.Subscribe, C.Retain]
+        mkPerm strs = M.fromList [(mkName strs, perm)]
+
+        normalPerm key = mkPerm [key, toString pid, "#"]
+        srvPerm key = mkPerm [key, "#"]
+
+        mkName :: IsString a => [String] -> a
+        mkName strs = fromString $ "/" ++ (intercalate "/" strs)
