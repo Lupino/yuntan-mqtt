@@ -7,12 +7,12 @@ auth:
     maxQueueSizeQoS0:     100
     maxQueueSizeQoS1:     100
     maxQueueSizeQoS2:     100
-  service:
-    gateway: GATEWAY
-    key: KEY
-    secret: SECRET
-    timeout: 30000
-    numThreads: 10
+  services:
+    - gateway: GATEWAY
+      key: KEY
+      secret: SECRET
+      timeout: 30000
+      numThreads: 10
 
   admin_principal:
     username: admin_name
