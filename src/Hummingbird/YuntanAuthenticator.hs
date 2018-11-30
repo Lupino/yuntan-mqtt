@@ -35,8 +35,7 @@ import qualified Network.MQTT.Trie                  as R
 
 import qualified Hummingbird.Configuration          as C
 
-import           Haxl.Core                          (GenHaxl, StateStore,
-                                                     initEnv, runHaxl,
+import           Haxl.Core                          (GenHaxl, initEnv, runHaxl,
                                                      stateEmpty, stateSet, try)
 
 import           Yuntan.API.User                    (getBind, initUserState)
@@ -59,10 +58,9 @@ data Service
 data YuntanEnv
   = YuntanEnv
   { userService :: Gateway
-  , stateStore  :: StateStore
   , envPassword :: Maybe T.Text
   , envUUID     :: Maybe UUID
-  }
+  } deriving (Show)
 
 instance AppEnv YuntanEnv where
   gateway env "UserDataSource" = userService env
@@ -111,7 +109,6 @@ instance Authenticator YuntanAuthenticator where
       gw <- initGateway $ srvEndpoint s
       pure YuntanEnv
         { userService = gw
-        , stateStore  = stateSet (initUserState $ numThreads $ srvEndpoint s) stateEmpty
         , envPassword = srvPassword s
         , envUUID     = srvUUID s
         }) $ cfgServiceList config
@@ -227,7 +224,8 @@ instance FromJSONKey Filter where
 
 runIO :: YuntanEnv -> GenHaxl YuntanEnv a -> IO (Maybe a)
 runIO env m = do
-  env0 <- initEnv (stateStore env) env
+  let stateStore  = stateSet (initUserState $ numThreads $ userService env) stateEmpty
+  env0 <- initEnv stateStore env
   ret <- runHaxl env0 $ try m
   case ret of
     Left e  -> Log.errorM "Hummingbird" (errMsg e) >> pure Nothing
@@ -240,6 +238,13 @@ authEnv auth key = go $ authEnvList auth
         go (x:xs) | appKey (userService x) == key = Just x
                   | otherwise = go xs
 
+authEnvByUUID :: YuntanAuthenticator -> UUID -> Maybe YuntanEnv
+authEnvByUUID auth pid = go $ authEnvList auth
+  where go :: [YuntanEnv] -> Maybe YuntanEnv
+        go [] = Nothing
+        go (x:xs) | envUUID x == Just pid = Just x
+                  | otherwise = go xs
+
 getUUID :: YuntanAuthenticator -> T.Text -> T.Text -> IO (Maybe UUID)
 getUUID auth key token = do
   if cfgUsername principal == Just key then
@@ -249,7 +254,7 @@ getUUID auth key token = do
     case authEnv auth (T.unpack key) of
       Nothing -> pure Nothing
       Just env -> do
-        if envPassword env == Just token then pure $ envUUID env
+        if envPassword env == Just token then pure (envUUID env)
         else do
           u <- runIO env $ getBind token
           case u of
@@ -269,34 +274,35 @@ getPrincipalConfig :: YuntanAuthenticator -> UUID -> IO (Maybe YuntanPrincipalCo
 getPrincipalConfig auth pid = do
   if cfgUUID principal == Just pid then pure $ Just principal { cfgUsername = Nothing }
   else
-    modifyMVarMasked (authUUIDMap auth) $ \uuidMap -> do
-      case HM.lookup pid uuidMap of
-        Nothing -> pure (uuidMap, Nothing)
-        Just key -> do
-          let newMap = HM.delete pid uuidMap
-          case authEnv auth key of
-            Nothing -> pure (newMap, Nothing)
-            Just env -> do
-              if envUUID env == Just pid then
-                pure (newMap, Just YuntanPrincipalConfig
-                  { cfgQuota = Nothing
-                  , cfgUsername = Just (fromString $ "/" ++ key)
-                  , cfgPassword = envPassword env
-                  , cfgUUID = envUUID env
-                  , cfgPermissions = srvPerm key
-                  })
-              else do
-                u <- runIO env $ getBind $ toText pid
-                case u of
-                  Nothing -> pure (newMap, Nothing)
-                  Just Bind {getBindExtra = extra} ->
-                    case fromJSON extra of
-                      Error _ -> pure (newMap, Nothing)
-                      Success a ->
-                        pure (newMap, Just a
-                          { cfgUsername = Just (fromString $ "/" ++ key ++ "/" ++ toString pid)
-                          , cfgPermissions = normalPerm key
-                          })
+    case authEnvByUUID auth pid of
+      Just env0 ->
+        pure $ Just YuntanPrincipalConfig
+          { cfgQuota = Nothing
+          , cfgUsername = Just (fromString $ "/" ++ appKey (userService env0))
+          , cfgPassword = envPassword env0
+          , cfgUUID = envUUID env0
+          , cfgPermissions = srvPerm $ appKey (userService env0)
+          }
+      Nothing ->
+        modifyMVarMasked (authUUIDMap auth) $ \uuidMap -> do
+          case HM.lookup pid uuidMap of
+            Nothing -> pure (uuidMap, Nothing)
+            Just key -> do
+              let newMap = HM.delete pid uuidMap
+              case authEnv auth key of
+                Nothing -> pure (newMap, Nothing)
+                Just env -> do
+                  u <- runIO env $ getBind $ toText pid
+                  case u of
+                    Nothing -> pure (newMap, Nothing)
+                    Just Bind {getBindExtra = extra} ->
+                      case fromJSON extra of
+                        Error _ -> pure (newMap, Nothing)
+                        Success a ->
+                          pure (newMap, Just a
+                            { cfgUsername = Just (fromString $ "/" ++ key ++ "/" ++ toString pid)
+                            , cfgPermissions = normalPerm key
+                            })
 
   where principal = adminPrincipal auth
         normalPerm key = M.fromList [(fromString $ "/" ++ key ++ "/" ++ toString pid ++ "/#", Identity [C.Publish, C.Subscribe, C.Retain])]
