@@ -246,14 +246,14 @@ authEnvByUUID auth pid = go $ authEnvList auth
                   | otherwise = go xs
 
 getUUID :: YuntanAuthenticator -> T.Text -> T.Text -> IO (Maybe UUID)
-getUUID auth key token = do
+getUUID auth key token =
   if cfgUsername principal == Just key then
     if cfgPassword principal == Just token then pure $ cfgUUID principal
                                            else pure Nothing
   else
     case authEnv auth (T.unpack key) of
       Nothing -> pure Nothing
-      Just env -> do
+      Just env ->
         if envPassword env == Just token then pure (envUUID env)
         else do
           u <- runIO env $ getBind token
@@ -265,13 +265,13 @@ getUUID auth key token = do
                 Just uuid ->
                   case fromText uuid of
                     Nothing -> return Nothing
-                    Just u0 -> modifyMVarMasked (authUUIDMap auth) $ \uuidMap -> do
-                      pure $ (HM.insert u0 (T.unpack key) uuidMap, Just u0)
+                    Just u0 -> modifyMVarMasked (authUUIDMap auth) $ \uuidMap ->
+                      pure (HM.insert u0 (T.unpack key) uuidMap, Just u0)
 
   where principal = adminPrincipal auth
 
 getPrincipalConfig :: YuntanAuthenticator -> UUID -> IO (Maybe YuntanPrincipalConfig)
-getPrincipalConfig auth pid = do
+getPrincipalConfig auth pid =
   if cfgUUID principal == Just pid then pure $ Just principal { cfgUsername = Nothing }
   else
     case authEnvByUUID auth pid of
@@ -284,7 +284,7 @@ getPrincipalConfig auth pid = do
           , cfgPermissions = srvPerm $ appKey (userService env0)
           }
       Nothing ->
-        modifyMVarMasked (authUUIDMap auth) $ \uuidMap -> do
+        modifyMVarMasked (authUUIDMap auth) $ \uuidMap ->
           case HM.lookup pid uuidMap of
             Nothing -> pure (uuidMap, Nothing)
             Just key -> do
