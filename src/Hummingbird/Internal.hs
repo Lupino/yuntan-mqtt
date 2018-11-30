@@ -132,6 +132,7 @@ new settings = do
 
       , Broker.onPublishDownstream = \_-> pure ()
       , Broker.preprocessPacket = preprocessPacket
+      , Broker.preprocessMessage = preprocessMessage
       }
 
 preprocessPacket :: Session auth -> ClientPacket -> IO ClientPacket
@@ -148,16 +149,17 @@ fixedPacketMessage session message = do
 fixedTopic :: (IsString a, Show a) => Maybe Username -> a -> a
 fixedTopic Nothing = id
 fixedTopic (Just (Username n)) = fromString . updateString (T.unpack n) . removeQuote . show
-  where removeQuote :: String -> String
-        removeQuote ('"' : xs) = take (length xs - 1) xs
-        removeQuote xs         = xs
 
-        updateString :: String -> String -> String
-        updateString [] s0      = s0
-        updateString s []       = s
-        updateString s ('/':xs) = updateString s xs
-        updateString s xs | last s == '/' = s ++ xs
-                          | otherwise = s ++ ('/':xs)
+removeQuote :: String -> String
+removeQuote ('"' : xs) = take (length xs - 1) xs
+removeQuote xs         = xs
+
+updateString :: String -> String -> String
+updateString [] s0      = s0
+updateString s []       = s
+updateString s ('/':xs) = updateString s xs
+updateString s xs | last s == '/' = s ++ xs
+                  | otherwise = s ++ ('/':xs)
 
 fixedPacketSubscribe :: Session auth -> [(Filter, QoS)] -> IO [(Filter, QoS)]
 fixedPacketSubscribe session filters = do
@@ -168,6 +170,16 @@ fixedPacketUnsubscribe :: Session auth -> [Filter] -> IO [Filter]
 fixedPacketUnsubscribe session filters = do
   principal <- Session.getPrincipal session
   pure $ map (fixedTopic (Authentication.principalUsername principal)) filters
+
+preprocessMessage :: Session auth -> Message -> IO Message
+preprocessMessage session msg = do
+  principal <- Session.getPrincipal session
+  case Authentication.principalUsername principal of
+    Nothing -> pure msg
+    Just (Username n) ->
+      pure msg
+        { msgTopic = fromString . drop (T.length n) . removeQuote . show $ msgTopic msg
+        }
 
 start :: Authenticator auth => Hummingbird auth -> IO ()
 start hum = do
