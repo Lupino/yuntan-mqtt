@@ -22,6 +22,12 @@ library
                      , Hummingbird.Logging
                      , Hummingbird.Terminator
                      , Hummingbird.Transport
+                     , Hummingbird.SysInfo
+                     , Hummingbird.Administration.Cli
+                     , Hummingbird.Administration.Escape
+                     , Hummingbird.Administration.Request
+                     , Hummingbird.Administration.Response
+                     , Hummingbird.Administration.Server
   build-depends:       base >= 4.7 && < 5
                      , mqtt
                      , aeson
@@ -50,6 +56,16 @@ library
                      , lens
                      , lens-aeson
                      , hslogger
+
+                     , bytestring
+                     , parsec
+                     , binary
+                     , clock
+                     , haskeline
+                     , socket-unix
+                     , unix
+                     , transformers
+                     , filepath
   default-language:    Haskell2010
 
 executable yuntan-mqtt

@@ -1,8 +1,19 @@
 {-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Hummingbird.Internal
-  ( Settings (..)
+  ( Hummingbird (..)
+  , Settings (..)
+  , new
   , start
+
+  , getConfig
+  , reloadConfig
+  , startTransports
+  , stopTransports
+  , restartAuthenticator
+  , statusTransports
+  , Status (..)
   ) where
 --------------------------------------------------------------------------------
 -- |
@@ -14,12 +25,16 @@ module Hummingbird.Internal
 -- Stability   :  experimental
 --------------------------------------------------------------------------------
 
+import           Control.Concurrent
 import           Control.Concurrent.Async
-import           Control.Monad                      (void)
+import           Control.Exception
+import           Control.Monad                      (void, (>=>))
 import           Data.Default.Class
 import qualified System.Log.Logger                  as Log
 
 import qualified Network.MQTT.Broker                as Broker
+import           Network.MQTT.Broker.Authentication (Authenticator,
+                                                     AuthenticatorConfig)
 import qualified Network.MQTT.Broker.Authentication as Authentication
 import           Network.MQTT.Broker.Session        (Session)
 import qualified Network.MQTT.Broker.Session        as Session
@@ -27,35 +42,69 @@ import           Network.MQTT.Message               (ClientPacket (..), Filter,
                                                      Message (..), QoS,
                                                      Username (..))
 
+import           Data.Aeson
 import           Data.String                        (IsString, fromString)
 import qualified Data.Text                          as T
 import           Hummingbird.Configuration
 import qualified Hummingbird.Logging                as Logging
+import qualified Hummingbird.SysInfo                as SysInfo
 import qualified Hummingbird.Terminator             as Terminator
 import qualified Hummingbird.Transport              as Transport
-import           Hummingbird.YuntanAuthenticator
+import           System.Exit
+import           System.IO
 
-data Settings
+data Hummingbird auth
+   = Hummingbird
+   { humSettings      :: Settings auth
+   , humBroker        :: Broker.Broker auth
+   , humConfig        :: MVar (Config auth)
+   , humAuthenticator :: MVar auth
+   , humTransport     :: MVar (Async ())
+   , humTerminator    :: MVar (Async ()) -- ^ Session termination thread
+   , humSysInfo       :: MVar (Async ()) -- ^ Sys info publishing thread
+   }
+
+-- | The status of a worker thread.
+data Status
+  = Running
+  | Stopped
+  | StoppedWithException SomeException
+  deriving (Show)
+
+data Settings auth
   = Settings
   { versionName    :: String
   , configFilePath :: FilePath
   } deriving (Show)
 
--- | Create a new broker and execute the handler function in the current thread.
-start :: Settings -> IO ()
-start settings = do
+new :: (Authenticator auth, FromJSON (AuthenticatorConfig auth)) => Settings auth -> IO (Hummingbird auth)
+new settings = do
   -- Load the config from file.
-  Right config <- loadConfigFromFile (configFilePath settings) :: IO (Either String (Config YuntanAuthenticator))
+  config <- loadConfigFromFile (configFilePath settings) >>= \case
+      Left e       -> hPutStrLn stderr e >> exitFailure
+      Right config -> pure config
 
   Logging.setup (logging config)
 
-  authenticator <- Authentication.newAuthenticator (auth config)
+  mconfig        <- newMVar config
+  mauthenticator <- newMVar =<< Authentication.newAuthenticator (auth config)
 
-  broker         <- Broker.newBroker (pure authenticator) brokerCallbacks
+  broker         <- Broker.newBroker (readMVar mauthenticator) brokerCallbacks
 
-  void $ async (Transport.run broker $ transports config)
+  mterminator    <- newMVar =<< async (Terminator.run broker)
+  mtransports    <- newMVar =<< async (Transport.run broker $ transports config)
+  msysinfo       <- newMVar =<< async (SysInfo.run broker)
 
-  Terminator.run broker
+  pure Hummingbird
+    { humSettings      = settings
+    , humBroker        = broker
+    , humConfig        = mconfig
+    , humAuthenticator = mauthenticator
+    , humTransport     = mtransports
+    , humTerminator    = mterminator
+    , humSysInfo       = msysinfo
+    }
+
   where
     brokerCallbacks = def {
         Broker.onConnectionAccepted = \req session->
@@ -119,3 +168,79 @@ fixedPacketUnsubscribe :: Session auth -> [Filter] -> IO [Filter]
 fixedPacketUnsubscribe session filters = do
   principal <- Session.getPrincipal session
   pure $ map (fixedTopic (Authentication.principalUsername principal)) filters
+
+start :: Authenticator auth => Hummingbird auth -> IO ()
+start hum = do
+  startTransports hum
+  startTerminator hum
+
+stop  :: Hummingbird auth -> IO ()
+stop hum = do
+  stopTransports hum
+  stopTerminator hum
+
+startTerminator :: Hummingbird auth -> IO ()
+startTerminator hum =
+  startThread (humTerminator hum) (Terminator.run $ humBroker hum)
+
+stopTerminator :: Hummingbird auth -> IO ()
+stopTerminator hum = stopThread (humTerminator hum)
+
+startSysInfo :: Hummingbird auth -> IO ()
+startSysInfo hum =
+  startThread (humSysInfo hum) (SysInfo.run $ humBroker hum)
+
+stopSysInfo :: Hummingbird auth -> IO ()
+stopSysInfo hum =
+  stopThread (humSysInfo hum)
+
+getConfig :: Hummingbird auth -> IO (Config auth)
+getConfig hum =
+  readMVar (humConfig hum)
+
+reloadConfig :: (FromJSON (AuthenticatorConfig auth)) => Hummingbird auth -> IO (Either String (Config auth))
+reloadConfig hum =
+  modifyMVar (humConfig hum) $ \config->
+    loadConfigFromFile (configFilePath $ humSettings hum) >>= \case
+      Left  e -> pure (config, Left e)
+      Right config' -> pure (config', Right config')
+
+restartAuthenticator :: Authenticator auth => Hummingbird auth -> IO ()
+restartAuthenticator hum = do
+  config <- readMVar (humConfig hum)
+  authenticator <- Authentication.newAuthenticator (auth config)
+  void $ swapMVar (humAuthenticator hum) authenticator
+
+startTransports :: Authenticator auth => Hummingbird auth -> IO ()
+startTransports hum =
+  modifyMVar_ (humTransport hum) $ \asnc->
+    poll asnc >>= \case
+      -- Is already running. Leave as is.
+      Nothing -> pure asnc
+      Just _  -> do
+        config <- readMVar (humConfig hum)
+        async $ Transport.run (humBroker hum) (transports config)
+
+stopTransports :: Hummingbird auth -> IO ()
+stopTransports hum =
+  stopThread (humTransport hum)
+
+statusTransports :: Hummingbird auth -> IO Status
+statusTransports hum =
+  withMVar (humTransport hum) $ poll >=> \case
+    Nothing -> pure Running
+    Just x  -> case x of
+      Right () -> pure Stopped
+      Left  e  -> pure (StoppedWithException e)
+
+stopThread :: MVar (Async ()) -> IO ()
+stopThread m =
+  withMVar m cancel
+
+startThread :: MVar (Async ()) -> IO () -> IO ()
+startThread m t =
+  modifyMVar_ m $ \asnc-> poll asnc >>= \case
+    -- Is already running. Leave as is.
+    Nothing -> pure asnc
+    -- Is not running (anymore). Start!
+    Just _  -> async t

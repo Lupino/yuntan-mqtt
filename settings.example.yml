@@ -24,6 +24,9 @@ auth:
     permissions:
       "#": [ PUB, SUB, RET ]
 
+admin:
+  socketPath: "hummingbird.sock"
+
 transports:
   - type: socket
     bindAddress: 0.0.0.0

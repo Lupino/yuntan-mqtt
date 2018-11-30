@@ -40,11 +40,17 @@ loadConfigFromFile path = do
 data Config auth
    = Config
    { auth       :: AuthenticatorConfig auth
+   , admin      :: AdminConfig
    , transports :: [ Transport.Config  ]
    , logging    :: Logging.Config
    }
 
 deriving instance (Show (AuthenticatorConfig auth)) => Show (Config auth)
+
+newtype AdminConfig
+   = AdminConfig
+   { adminSocketPath ::   FilePath
+   } deriving (Eq, Ord, Show)
 
 data ServerConfig
    = ServerConfig
@@ -84,6 +90,12 @@ instance FromJSON (R.TrieNode (Identity [Privilege])) where
 instance (FromJSON (AuthenticatorConfig auth)) => FromJSON (Config auth) where
   parseJSON (Object v) = Config
     <$> v .: "auth"
+    <*> v .: "admin"
     <*> v .: "transports"
     <*> v .: "logging"
   parseJSON invalid = typeMismatch "Config" invalid
+
+instance FromJSON AdminConfig where
+  parseJSON (Object v) = AdminConfig
+    <$> v .: "socketPath" .!= "sock/hummingbird.socket"
+  parseJSON invalid = typeMismatch "AdminConfig" invalid

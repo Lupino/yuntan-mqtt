@@ -10,6 +10,7 @@
 module Main where
 
 import           Hummingbird
+import           Hummingbird.YuntanAuthenticator
 
 main :: IO ()
 main =
@@ -17,4 +18,4 @@ main =
   where
     settings = VendorSettings {
       vendorVersionName = "0.5.0.0"
-    }
+    } :: VendorSettings YuntanAuthenticator

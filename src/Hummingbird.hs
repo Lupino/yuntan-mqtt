@@ -14,12 +14,17 @@ module Hummingbird (VendorSettings (..), runWithVendorSettings) where
 -- Stability   :  experimental
 --------------------------------------------------------------------------------
 
-import           Options
+import           Data.Aeson                         (FromJSON)
+import qualified Hummingbird.Administration.Cli     as Cli
+import qualified Hummingbird.Administration.Server  as Administration
 import qualified Hummingbird.Internal               as HI
+import           Network.MQTT.Broker.Authentication (Authenticator,
+                                                     AuthenticatorConfig)
+import           Options
 
 {-# ANN module "HLint: ignore Use newtype instead of data" #-}
 
-data VendorSettings = VendorSettings
+data VendorSettings auth = VendorSettings
   { vendorVersionName :: String
   } deriving (Eq, Ord, Show)
 
@@ -40,15 +45,19 @@ instance Options BrokerOptions where
 instance Options VersionOptions where
   defineOptions = pure VersionOptions
 
-runWithVendorSettings :: VendorSettings -> IO ()
+runWithVendorSettings :: forall auth. (Authenticator auth, FromJSON (AuthenticatorConfig auth), Show (AuthenticatorConfig auth)) => VendorSettings auth -> IO ()
 runWithVendorSettings vendorSettings = runSubcommand
-  [ subcommand "broker"  runBroker
+  [ subcommand "cli"     Cli.run
+  , subcommand "broker"  runBroker
   , subcommand "version" runVersion
   ]
   where
 
     runBroker :: MainOptions -> BrokerOptions -> [String] -> IO ()
-    runBroker _ opts _ = HI.start settings
+    runBroker _ opts _ = do
+      hum <- HI.new settings :: IO (HI.Hummingbird auth)
+      HI.start hum
+      Administration.run hum
       where
         settings = HI.Settings {
           HI.versionName = vendorVersionName vendorSettings
