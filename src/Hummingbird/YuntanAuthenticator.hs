@@ -255,6 +255,11 @@ getPrincipalConfig auth pid = do
             Just Bind {getBindExtra = extra} ->
               case fromJSON extra of
                 Error _ -> pure (HM.delete pid uuidMap, Nothing)
-                Success a -> pure (HM.delete pid uuidMap, Just a {cfgUsername = Just (fromString $ "/" ++ key ++ "/" ++ toString pid)})
+                Success a ->
+                  pure (HM.delete pid uuidMap, Just a
+                    { cfgUsername = Just (fromString $ "/" ++ key ++ "/" ++ toString pid)
+                    , cfgPermissions = normalPerm key
+                    })
 
   where principal = adminPrincipal auth
+        normalPerm key = M.fromList [(fromString $ "/" ++ key ++ "/" ++ toString pid ++ "/#", Identity [C.Publish, C.Subscribe, C.Retain])]
