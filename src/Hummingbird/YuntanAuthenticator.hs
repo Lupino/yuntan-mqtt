@@ -188,7 +188,7 @@ instance FromJSON Quota where
 
 instance FromJSON (AuthenticatorConfig YuntanAuthenticator) where
   parseJSON (Object v) = YuntanAuthenticatorConfig
-    <$> v .: "service"
+    <$> v .: "services"
     <*> v .: "defaultQuota"
     <*> v .: "admin_principal"
   parseJSON invalid = typeMismatch "YuntanAuthenticatorConfig" invalid
