@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-10.3
+resolver: lts-12.20
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -37,39 +37,29 @@ resolver: lts-10.3
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - .
-- location:
-    git: https://github.com/Lupino/yuntan-common.git
-    commit: 35dc17e4c419c54b9f067352facf9778cf45895f
-  extra-dep: true
+# Dependency packages to be pulled from upstream that are not in the resolver
+# (e.g., acme-missiles-0.3)
+extra-deps:
+- socket-unix-0.2.0.0
+- git: https://github.com/Lupino/yuntan-common.git
+  commit: cfc461bd81713b3d9373bc12fe6063ae13a9339f
   subdirs:
   - yuntan-common-result
   - yuntan-common-signature
   - yuntan-common-list-result
   - yuntan-common-json
   - yuntan-common-wreq
-- location:
-    git: https://github.com/Lupino/yuntan-base.git
-    commit: bf3433696d62004d4c3e2201a56fae1aade44814
-  extra-dep: true
+- git: https://github.com/Lupino/yuntan-base.git
+  commit: 0ead9935ee53a6cd65747f0afd08d5e9c66f431c
   subdirs:
   - yuntan-base
   - yuntan-base-user
-- location:
-    git: https://github.com/lpeterse/haskell-hummingbird.git
-    commit: 957b6dac9d6deae8ca739c9448c4566e5e7852b7
-  extra-dep: true
-- location:
-    git: https://github.com/lpeterse/haskell-mqtt.git
-    commit: 23ab7f34b73c36af399bae89ee509d56acaa3c71
-  extra-dep: true
-- location:
-    git: https://github.com/facebook/Haxl.git
-    commit: 6b75496a29fd46f7fcc3fd1586fa2b6c0b7e36b5
-  extra-dep: true
-# Dependency packages to be pulled from upstream that are not in the resolver
-# (e.g., acme-missiles-0.3)
-extra-deps:
-- socket-unix-0.2.0.0
+- git: https://github.com/Lupino/haskell-mqtt.git
+  commit: d404c7ddacc90003a71d4e4a95c48e8c0eb33fc0
+- git: https://github.com/lpeterse/haskell-socket.git
+  commit: 95ee857592f0d5125d0fab4abca0b20e6a1771d2
+- git: https://github.com/lpeterse/haskell-networking.git
+  commit: c131db3c27a582387a6396c134e62ba37a1865bf
 
 # Override default flag values for local packages and extra-deps
 flags: {}
