@@ -36,8 +36,9 @@ import           Network.Wreq                       (getWith)
 import qualified System.Log.Logger                  as Log
 import           Yuntan.Base                        (Gateway (..), initGateway)
 import           Yuntan.Base                        (getOptionsAndSign)
-import           Yuntan.Types.Result                (ErrResult (errMsg))
-import           Yuntan.Utils.Wreq                  (responseJSON)
+import           Yuntan.Types.Result                (ErrResult (errMsg),
+                                                     OkResult (..))
+import           Yuntan.Utils.Wreq                  (responseOkResult_)
 
 newtype Device
   = Device
@@ -238,10 +239,10 @@ authEnvByUUID auth pid = go $ authEnvList auth
                   | otherwise = go xs
 
 --   get   "/api/devices/:uuidOrToken/"
-getDevice :: Gateway -> T.Text -> IO Device
+getDevice :: Gateway -> T.Text -> IO (OkResult Device)
 getDevice gw token = do
   opts <- getOptionsAndSign "GET" path [] gw
-  responseJSON $ getWith opts uri
+  responseOkResult_ "device" $ getWith opts uri
   where path = concat [ "/api/devices/", T.unpack token, "/"]
         uri = host gw ++ path
 
@@ -259,7 +260,7 @@ getUUID auth key token =
           u <- try $ getDevice (envGateway env) token
           case u of
             Left e -> Log.errorM "Hummingbird" (errMsg e) >> pure Nothing
-            Right (Device u0) ->
+            Right (OkResult (Device u0)) ->
               modifyMVarMasked (authUUIDMap auth) $ \uuidMap ->
                 pure (HM.insert u0 (T.unpack key) uuidMap, Just u0)
 
