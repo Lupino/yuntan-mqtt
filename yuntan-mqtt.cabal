@@ -49,12 +49,10 @@ library
                      , yaml
                      , unordered-containers
 
-                     , haxl
                      , yuntan-base
-                     , yuntan-base-user
+                     , wreq
+                     , yuntan-common-wreq
                      , yuntan-common-result
-                     , lens
-                     , lens-aeson
                      , hslogger
 
                      , bytestring

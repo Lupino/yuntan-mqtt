@@ -13,7 +13,7 @@ module Hummingbird.YuntanAuthenticator where
 --------------------------------------------------------------------------------
 
 import           Control.Concurrent.MVar
-import           Control.Exception                  (Exception)
+import           Control.Exception                  (Exception, try)
 import           Data.Aeson                         (FromJSON (..), (.:?))
 import           Data.Aeson.Types
 import qualified Data.Attoparsec.ByteString         as AP
@@ -27,26 +27,22 @@ import           Data.String                        (IsString, fromString)
 import qualified Data.Text                          as T
 import qualified Data.Text.Encoding                 as T
 import           Data.Typeable
-import           Data.UUID                          (UUID, fromText, toString)
-
+import           Data.UUID                          (UUID, toString)
+import qualified Hummingbird.Configuration          as C
 import           Network.MQTT.Broker.Authentication
 import           Network.MQTT.Message
 import qualified Network.MQTT.Trie                  as R
-
-import qualified Hummingbird.Configuration          as C
-
-import           Haxl.Core                          (GenHaxl, initEnv, runHaxl,
-                                                     stateEmpty, stateSet, try)
-
-import           Yuntan.API.User                    (getBind, initUserState)
-import           Yuntan.Base                        (AppEnv, Gateway (..),
-                                                     gateway, initGateway)
-import           Yuntan.Types.Result                (ErrResult (errMsg))
-import           Yuntan.Types.User                  (Bind (..))
-
-import           Control.Lens                       ((^?))
-import qualified Data.Aeson.Lens                    as Lens (key, _String)
+import           Network.Wreq                       (getWith)
 import qualified System.Log.Logger                  as Log
+import           Yuntan.Base                        (Gateway (..), initGateway)
+import           Yuntan.Base                        (getOptionsAndSign)
+import           Yuntan.Types.Result                (ErrResult (errMsg))
+import           Yuntan.Utils.Wreq                  (responseJSON)
+
+newtype Device
+  = Device
+  { devUUID :: UUID
+  }
 
 data Service
   = Service
@@ -58,15 +54,11 @@ data Service
 
 data YuntanEnv
   = YuntanEnv
-  { userService :: Gateway
+  { envGateway  :: Gateway
   , envPassword :: Maybe T.Text
   , envUUID     :: Maybe UUID
   , envQuota    :: Maybe YuntanQuotaConfig
   } deriving (Show)
-
-instance AppEnv YuntanEnv where
-  gateway env "UserDataSource" = userService env
-  gateway _ n                  = error $ "Unsupport data source" ++ n
 
 data YuntanAuthenticator
    = YuntanAuthenticator
@@ -110,7 +102,7 @@ instance Authenticator YuntanAuthenticator where
     envList <- mapM (\s -> do
       gw <- initGateway $ srvEndpoint s
       pure YuntanEnv
-        { userService = gw
+        { envGateway = gw
         , envPassword = srvPassword s
         , envUUID     = srvUUID s
         , envQuota    = srvQuota s
@@ -198,6 +190,11 @@ instance FromJSON Quota where
     <*> v .: "maxQueueSizeQoS2"
   parseJSON invalid = typeMismatch "Quota" invalid
 
+instance FromJSON Device where
+  parseJSON (Object v) = Device
+    <$> v .: "uuid"
+  parseJSON invalid = typeMismatch "Device" invalid
+
 instance FromJSON Service where
   parseJSON (Object v) = Service
     <$> v .: "endpoint"
@@ -226,20 +223,11 @@ instance FromJSONKey Filter where
       Left e  -> fail e
       Right x -> pure x
 
-runIO :: YuntanEnv -> GenHaxl YuntanEnv a -> IO (Maybe a)
-runIO env m = do
-  let stateStore  = stateSet (initUserState $ numThreads $ userService env) stateEmpty
-  env0 <- initEnv stateStore env
-  ret <- runHaxl env0 $ try m
-  case ret of
-    Left e  -> Log.errorM "Hummingbird" (errMsg e) >> pure Nothing
-    Right v -> pure $ Just v
-
 authEnv :: YuntanAuthenticator -> String -> Maybe YuntanEnv
 authEnv auth key = go $ authEnvList auth
   where go :: [YuntanEnv] -> Maybe YuntanEnv
         go [] = Nothing
-        go (x:xs) | appKey (userService x) == key = Just x
+        go (x:xs) | appKey (envGateway x) == key = Just x
                   | otherwise = go xs
 
 authEnvByUUID :: YuntanAuthenticator -> UUID -> Maybe YuntanEnv
@@ -248,6 +236,14 @@ authEnvByUUID auth pid = go $ authEnvList auth
         go [] = Nothing
         go (x:xs) | envUUID x == Just pid = Just x
                   | otherwise = go xs
+
+--   get   "/api/devices/:uuidOrToken/"
+getDevice :: Gateway -> T.Text -> IO Device
+getDevice gw token = do
+  opts <- getOptionsAndSign "GET" path [] gw
+  responseJSON $ getWith opts uri
+  where path = concat [ "/api/devices/", T.unpack token, "/"]
+        uri = host gw ++ path
 
 getUUID :: YuntanAuthenticator -> T.Text -> T.Text -> IO (Maybe UUID)
 getUUID auth key token =
@@ -260,17 +256,12 @@ getUUID auth key token =
       Just env ->
         if envPassword env == Just token then pure (envUUID env)
         else do
-          u <- runIO env $ getBind token
+          u <- try $ getDevice (envGateway env) token
           case u of
-            Nothing -> return Nothing
-            Just Bind {getBindExtra = extra} ->
-              case extra ^? Lens.key "uuid" . Lens._String of
-                Nothing   -> return Nothing
-                Just uuid ->
-                  case fromText uuid of
-                    Nothing -> return Nothing
-                    Just u0 -> modifyMVarMasked (authUUIDMap auth) $ \uuidMap ->
-                      pure (HM.insert u0 (T.unpack key) uuidMap, Just u0)
+            Left e -> Log.errorM "Hummingbird" (errMsg e) >> pure Nothing
+            Right (Device u0) ->
+              modifyMVarMasked (authUUIDMap auth) $ \uuidMap ->
+                pure (HM.insert u0 (T.unpack key) uuidMap, Just u0)
 
   where principal = adminPrincipal auth
 
@@ -283,10 +274,10 @@ getPrincipalConfig auth pid =
       Just env0 ->
         pure $ Just YuntanPrincipalConfig
           { cfgQuota = envQuota env0
-          , cfgUsername = Just (mkName [appKey (userService env0)])
+          , cfgUsername = Just (mkName [appKey (envGateway env0)])
           , cfgPassword = envPassword env0
           , cfgUUID = envUUID env0
-          , cfgPermissions = srvPerm $ appKey (userService env0)
+          , cfgPermissions = srvPerm $ appKey (envGateway env0)
           }
       Nothing ->
         modifyMVarMasked (authUUIDMap auth) $ \uuidMap ->
