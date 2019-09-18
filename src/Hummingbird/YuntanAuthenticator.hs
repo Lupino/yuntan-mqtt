@@ -28,6 +28,7 @@ import qualified Data.Text                          as T
 import qualified Data.Text.Encoding                 as T
 import           Data.Typeable
 import           Data.UUID                          (UUID, toString)
+import           Data.Yaml                          (decodeFileEither)
 import qualified Hummingbird.Configuration          as C
 import           Network.MQTT.Broker.Authentication
 import           Network.MQTT.Message
@@ -92,7 +93,7 @@ data YuntanQuotaConfig
 instance Authenticator YuntanAuthenticator where
   data AuthenticatorConfig YuntanAuthenticator
      = YuntanAuthenticatorConfig
-       { cfgServiceList    :: [Service]
+       { cfgServicePath    :: FilePath
        , cfgDefaultQuota   :: Quota
        , cfgAdminPrincipal :: YuntanPrincipalConfig
        } deriving (Show)
@@ -100,14 +101,18 @@ instance Authenticator YuntanAuthenticator where
      = YuntanAuthenticationException deriving (Eq, Ord, Show, Typeable)
 
   newAuthenticator config = do
-    envList <- mapM (\s -> do
-      gw <- initGateway $ srvEndpoint s
-      pure YuntanEnv
-        { envGateway = gw
-        , envPassword = srvPassword s
-        , envUUID     = srvUUID s
-        , envQuota    = srvQuota s
-        }) $ cfgServiceList config
+    ss <- decodeFileEither cfgServicePath
+    envList <- case ss of
+                 Left e -> print e
+                 Right srvs -> do
+                    mapM (\s -> do
+                      gw <- initGateway $ srvEndpoint s
+                      pure YuntanEnv
+                        { envGateway = gw
+                        , envPassword = srvPassword s
+                        , envUUID     = srvUUID s
+                        , envQuota    = srvQuota s
+                        }) srvs
 
     uuidM <- newMVar HM.empty
 
