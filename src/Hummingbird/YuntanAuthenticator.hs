@@ -101,9 +101,11 @@ instance Authenticator YuntanAuthenticator where
      = YuntanAuthenticationException deriving (Eq, Ord, Show, Typeable)
 
   newAuthenticator config = do
-    ss <- decodeFileEither cfgServicePath
+    ss <- decodeFileEither $ cfgServicePath config
     envList <- case ss of
-                 Left e -> print e
+                 Left e -> do
+                   print e
+                   return []
                  Right srvs -> do
                     mapM (\s -> do
                       gw <- initGateway $ srvEndpoint s
