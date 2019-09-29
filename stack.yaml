@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: lts-12.20
+resolver: lts-14.6
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -41,8 +41,9 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - socket-unix-0.2.0.0
+- socket-0.8.2.0
 - git: https://github.com/Lupino/yuntan-common.git
-  commit: cfc461bd81713b3d9373bc12fe6063ae13a9339f
+  commit: d33d75348877c1339b34e20abcff6ed4df567adf
   subdirs:
   - yuntan-common-result
   - yuntan-common-signature
@@ -50,14 +51,12 @@ extra-deps:
   - yuntan-common-json
   - yuntan-common-wreq
 - git: https://github.com/Lupino/yuntan-base.git
-  commit: 0ead9935ee53a6cd65747f0afd08d5e9c66f431c
+  commit: acef220dbd308284f36868cb28334db457bee653
   subdirs:
   - yuntan-base
   - yuntan-base-user
 - git: https://github.com/Lupino/haskell-mqtt.git
   commit: d404c7ddacc90003a71d4e4a95c48e8c0eb33fc0
-- git: https://github.com/lpeterse/haskell-socket.git
-  commit: 95ee857592f0d5125d0fab4abca0b20e6a1771d2
 - git: https://github.com/lpeterse/haskell-networking.git
   commit: c131db3c27a582387a6396c134e62ba37a1865bf
 
