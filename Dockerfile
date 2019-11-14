@@ -14,7 +14,8 @@ RUN stack install --local-bin-path bin
 
 FROM ubuntu:18.04
 
-RUN apt-get update && apt-get install -y libatomic1
+# auto install ca by curl
+RUN apt-get update && apt-get install -y libatomic1 curl
 
 COPY --from=0 /data/bin/* /usr/bin/
 COPY config-dev.yml /config.yml
