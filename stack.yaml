@@ -54,7 +54,6 @@ extra-deps:
   commit: acef220dbd308284f36868cb28334db457bee653
   subdirs:
   - yuntan-base
-  - yuntan-base-user
 - git: https://github.com/Lupino/haskell-mqtt.git
   commit: d404c7ddacc90003a71d4e4a95c48e8c0eb33fc0
 - git: https://github.com/lpeterse/haskell-networking.git
