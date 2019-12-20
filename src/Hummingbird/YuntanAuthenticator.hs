@@ -110,7 +110,7 @@ instance Authenticator YuntanAuthenticator where
                     mapM (\s -> do
                       gw <- initGateway $ srvEndpoint s
                       pure YuntanEnv
-                        { envGateway = gw
+                        { envGateway  = gw
                         , envPassword = srvPassword s
                         , envUUID     = srvUUID s
                         , envQuota    = srvQuota s

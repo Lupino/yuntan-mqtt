@@ -51,7 +51,7 @@ extra-deps:
   - yuntan-common-json
   - yuntan-common-wreq
 - git: https://github.com/Lupino/yuntan-base.git
-  commit: acef220dbd308284f36868cb28334db457bee653
+  commit: 9a8715a124127ba72e94b44961d032d77c28d50a
   subdirs:
   - yuntan-base
 - git: https://github.com/Lupino/haskell-mqtt.git
